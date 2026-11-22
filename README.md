@@ -2,6 +2,10 @@
 
 Unreal Engine 5 C++ 滑翔游戏与双通道肌电桥接服务的迁移源码。此快照为取消 Petalwake 参考低空航线和草浪后的版本。包含游戏场景、资产、音乐、航线、源码、肌电桥接与地貌源素材；不包含 Unreal Engine、第三方开发工具、本机缓存或个人肌电记录。
 
+## 游戏演示
+
+[观看或下载飞行演示视频](Media/windroute-gameplay-demo.mp4)（约 2 分 24 秒，含飞行结算画面）。
+
 ## 环境
 
 - Unreal Engine **5.8.4**；需自行通过 Epic Games 安装。
