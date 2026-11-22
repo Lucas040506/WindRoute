@@ -4,7 +4,11 @@ Unreal Engine 5 C++ 滑翔游戏与双通道肌电桥接服务的迁移源码。
 
 ## 游戏演示
 
-[观看或下载飞行演示视频](Media/windroute-gameplay-demo.mp4)（约 31 秒，含飞行与结算画面的精选片段）。
+31 秒精选片段：
+
+https://github.com/user-attachments/assets/46f1dd22-945c-469b-abe0-bdd6c6ce95d3
+
+[如果播放器没有显示，打开演示页面](https://github.com/Lucas040506/WindRoute/issues/1)；也可以[下载视频文件](Media/windroute-gameplay-demo.mp4)。
 
 ## 环境
 
