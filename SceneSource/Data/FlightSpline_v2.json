@@ -1,0 +1,185 @@
+{
+ "version": "v2",
+ "frame_note": "Blender: x east, y north, z up (m). UE via Blender FBX: X=x*100, Y=-y*100, Z=z*100 (cm); UE yaw = -yaw.",
+ "length_m": 3136.0,
+ "duration_s": 58.907578720485475,
+ "sections": {
+  "start_meadow": {
+   "t0": 0.0,
+   "t1": 3.28,
+   "speed_mps": 62.0
+  },
+  "canyon": {
+   "t0": 3.29,
+   "t1": 10.88,
+   "speed_mps": 66.0
+  },
+  "pass": {
+   "t0": 10.88,
+   "t1": 13.95,
+   "speed_mps": 62.0
+  },
+  "meadow_approach": {
+   "t0": 13.96,
+   "t1": 20.35,
+   "speed_mps": 56.0
+  },
+  "peak_foot": {
+   "t0": 20.36,
+   "t1": 31.05,
+   "speed_mps": 48.0
+  },
+  "mid_climb": {
+   "t0": 31.07,
+   "t1": 45.59,
+   "speed_mps": 46.0
+  },
+  "ridge_crest": {
+   "t0": 45.6,
+   "t1": 52.41,
+   "speed_mps": 50.0
+  },
+  "far_view": {
+   "t0": 52.42,
+   "t1": 58.91,
+   "speed_mps": 55.0
+  }
+ },
+ "control": {
+  "player_input": "EMG left/right only -> lateral offset relative to the spline",
+  "emg_lateral_max_m": 12.0,
+  "auto": "forward speed, heading along spline, altitude",
+  "bank": "smoothed coordinated-turn bank, |bank| <= 50 deg (+ <= 2 deg x lateral accel term)",
+  "rings": "optional; overlap = score, miss = continue"
+ },
+ "chase_camera": {
+  "back_m": 11.0,
+  "up_m": 3.0,
+  "fov_deg": 66,
+  "orbit_into_turn_max_deg": {
+   "peak": 36,
+   "other": 12
+  }
+ },
+ "rings": [
+  {
+   "name": "Ring_00",
+   "section": "canyon",
+   "s_m": 330.625,
+   "ue_cm": [
+    23002.9,
+    -36319.9,
+    3161.0
+   ],
+   "ue_yaw": -68.98,
+   "ue_pitch": 0.99
+  },
+  {
+   "name": "Ring_01",
+   "section": "canyon",
+   "s_m": 552.25,
+   "ue_cm": [
+    23032.3,
+    -57559.4,
+    4306.2
+   ],
+   "ue_yaw": -71.66,
+   "ue_pitch": 6.77
+  },
+  {
+   "name": "Ring_02",
+   "section": "pass",
+   "s_m": 794.75,
+   "ue_cm": [
+    38360.2,
+    -75460.6,
+    7381.8
+   ],
+   "ue_yaw": -29.47,
+   "ue_pitch": 2.05
+  },
+  {
+   "name": "Ring_03",
+   "section": "peak_foot",
+   "s_m": 1505.75,
+   "ue_cm": [
+    101929.5,
+    -81588.3,
+    9726.9
+   ],
+   "ue_yaw": 57.96,
+   "ue_pitch": 7.66
+  },
+  {
+   "name": "Ring_04",
+   "section": "mid_climb",
+   "s_m": 1901.7,
+   "ue_cm": [
+    94931.0,
+    -47522.2,
+    15427.2
+   ],
+   "ue_yaw": 162.3,
+   "ue_pitch": 8.69
+  },
+  {
+   "name": "Ring_05",
+   "section": "mid_climb",
+   "s_m": 2104.5,
+   "ue_cm": [
+    75787.9,
+    -51178.9,
+    18459.2
+   ],
+   "ue_yaw": -149.12,
+   "ue_pitch": 8.42
+  },
+  {
+   "name": "Ring_06",
+   "section": "mid_climb",
+   "s_m": 2307.3,
+   "ue_cm": [
+    69127.8,
+    -68402.4,
+    21316.8
+   ],
+   "ue_yaw": -69.81,
+   "ue_pitch": 7.76
+  },
+  {
+   "name": "Ring_07",
+   "section": "ridge_crest",
+   "s_m": 2613.75,
+   "ue_cm": [
+    93653.3,
+    -77554.8,
+    24715.7
+   ],
+   "ue_yaw": 23.75,
+   "ue_pitch": 1.25
+  },
+  {
+   "name": "Ring_08",
+   "section": "far_view",
+   "s_m": 2960.5,
+   "ue_cm": [
+    111764.2,
+    -50269.5,
+    21939.8
+   ],
+   "ue_yaw": 76.35,
+   "ue_pitch": -7.19
+  }
+ ],
+ "peak": {
+  "centre_blender_m": [
+   835.0,
+   650.0
+  ],
+  "summit_m": 368,
+  "shoulder_centre_blender_m": [
+   930.0,
+   735.0
+  ]
+ }
+}

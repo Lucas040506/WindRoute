@@ -1,0 +1,10 @@
+{
+  "length_m": 3273.8,
+  "gate_count": 40,
+  "nominal_interval_s": 4,
+  "clearance_center_and_20m_sides_m": 29.94,
+  "height_min_m": 30.0,
+  "height_max_m": 158.1,
+  "max_height_gradient": 0.24,
+  "note": "Clearance uses procedural terrain height, not UE collision meshes, foliage, camera, or player deviation."
+}

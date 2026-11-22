@@ -1,0 +1,8 @@
+newmtl M_LowPolyPalette
+Kd 1 1 1
+map_Kd ../Textures/T_LowPolyPalette_v2.png
+
+newmtl M_Ring
+Kd 1 1 1
+Ke 0.9 0.6 0.1
+map_Kd ../Textures/T_LowPolyPalette_v2.png

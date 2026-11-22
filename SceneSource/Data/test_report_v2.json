@@ -1,0 +1,97 @@
+{
+ "max_bank_deg": 49.967792753123476,
+ "max_bank_rate_deg_s": 63.79229690139081,
+ "max_climb_gradient_pct": 16.731990259303764,
+ "max_vertical_accel_g": 0.46765899526478955,
+ "max_speed_change_mps2": 1.368210973619739,
+ "speed_range_mps": [
+  46.06745122738363,
+  65.58849451687145
+ ],
+ "wingtip_min_3d_clearance_terrain_m": 12.849880475623353,
+ "wingtip_min_clearance_where": {
+  "s_m": 0.0,
+  "emg_offset_m": -4.0,
+  "section": "start_meadow"
+ },
+ "wingtip_min_clearance_by_section_m": {
+  "start_meadow": 12.8,
+  "canyon": 20.8,
+  "pass": 25.2,
+  "meadow_approach": 45.4,
+  "peak_foot": 47.1,
+  "mid_climb": 40.3,
+  "ridge_crest": 47.2,
+  "far_view": 85.6
+ },
+ "wingtip_min_clearance_trees_rocks_m": 16.078311058090407,
+ "camera": {
+  "left_-12m": {
+   "min_camera_terrain_3d_m": 15.34,
+   "min_camera_obstacle_m": 19.66,
+   "min_line_of_sight_height_m": 13.23,
+   "blocked_frames": 0,
+   "frames": 883
+  },
+  "centre_0m": {
+   "min_camera_terrain_3d_m": 15.39,
+   "min_camera_obstacle_m": 21.37,
+   "min_line_of_sight_height_m": 13.25,
+   "blocked_frames": 0,
+   "frames": 883
+  },
+  "right_+12m": {
+   "min_camera_terrain_3d_m": 15.43,
+   "min_camera_obstacle_m": 14.15,
+   "min_line_of_sight_height_m": 13.25,
+   "blocked_frames": 0,
+   "frames": 883
+  },
+  "demo_emg": {
+   "min_camera_terrain_3d_m": 15.39,
+   "min_camera_obstacle_m": 21.37,
+   "min_line_of_sight_height_m": 13.25,
+   "blocked_frames": 0,
+   "frames": 883
+  }
+ },
+ "route": {
+  "length_m": 3136.0,
+  "duration_s": 58.907578720485475,
+  "sections_s": {
+   "start_meadow": [
+    0.0,
+    3.28
+   ],
+   "canyon": [
+    3.29,
+    10.88
+   ],
+   "pass": [
+    10.88,
+    13.95
+   ],
+   "meadow_approach": [
+    13.96,
+    20.35
+   ],
+   "peak_foot": [
+    20.36,
+    31.05
+   ],
+   "mid_climb": [
+    31.07,
+    45.59
+   ],
+   "ridge_crest": [
+    45.6,
+    52.41
+   ],
+   "far_view": [
+    52.42,
+    58.91
+   ]
+  }
+ },
+ "PASS": true
+}

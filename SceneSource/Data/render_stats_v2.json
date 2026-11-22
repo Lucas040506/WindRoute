@@ -1,0 +1,86 @@
+{
+ "frames": 1767,
+ "by_section": {
+  "start_meadow": {
+   "near_fill_mean": 0.449,
+   "near_fill_max": 0.561,
+   "sky_mean": 0.126,
+   "frames_near_fill_over_50pct": 56
+  },
+  "canyon": {
+   "near_fill_mean": 0.537,
+   "near_fill_max": 0.682,
+   "sky_mean": 0.114,
+   "frames_near_fill_over_50pct": 190
+  },
+  "pass": {
+   "near_fill_mean": 0.171,
+   "near_fill_max": 0.37,
+   "sky_mean": 0.248,
+   "frames_near_fill_over_50pct": 0
+  },
+  "meadow_approach": {
+   "near_fill_mean": 0.055,
+   "near_fill_max": 0.123,
+   "sky_mean": 0.255,
+   "frames_near_fill_over_50pct": 0
+  },
+  "peak_foot": {
+   "near_fill_mean": 0.163,
+   "near_fill_max": 0.298,
+   "sky_mean": 0.427,
+   "frames_near_fill_over_50pct": 0
+  },
+  "mid_climb": {
+   "near_fill_mean": 0.176,
+   "near_fill_max": 0.517,
+   "sky_mean": 0.484,
+   "frames_near_fill_over_50pct": 1
+  },
+  "ridge_crest": {
+   "near_fill_mean": 0.029,
+   "near_fill_max": 0.566,
+   "sky_mean": 0.415,
+   "frames_near_fill_over_50pct": 1
+  },
+  "far_view": {
+   "near_fill_mean": 0.014,
+   "near_fill_max": 0.208,
+   "sky_mean": 0.202,
+   "frames_near_fill_over_50pct": 0
+  }
+ },
+ "longest_run_near_fill_over_50pct_s": 5.1,
+ "ring_contact": {
+  "left_-12m": {
+   "frames_wing_touching_ring": 0,
+   "frames_camera_within_1m_of_ring": 0
+  },
+  "centre_0m": {
+   "frames_wing_touching_ring": 0,
+   "frames_camera_within_1m_of_ring": 3
+  },
+  "right_+12m": {
+   "frames_wing_touching_ring": 0,
+   "frames_camera_within_1m_of_ring": 7
+  }
+ },
+ "glider_occlusion_by_scene_480x270_15fps": {
+  "left_-12m": {
+   "frames": 884,
+   "frames_blocked_over_5pct": 0
+  },
+  "centre_0m": {
+   "frames": 884,
+   "frames_blocked_over_5pct": 1,
+   "cause": "t=43.0s camera passes through Ring rim (terrain line-of-sight clearance 154 m)"
+  },
+  "right_+12m": {
+   "frames": 884,
+   "frames_blocked_over_5pct": 2,
+   "cause": "t=34.2s/43.0s camera passes through Ring rim (terrain LOS clearance >=132 m)"
+  },
+  "terrain_or_trees_blocking_frames": 0
+ },
+ "near_fill_note": "near_fill = share of screen pixels showing scene geometry closer than 150 m (1280x720 demo-EMG run)"
+}
