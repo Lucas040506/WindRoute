@@ -10,6 +10,8 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "InputCoreTypes.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Materials/MaterialInterface.h"
 #include "EngineUtils.h"
@@ -20,7 +22,7 @@ constexpr int WindRibbonCount = 12;
 constexpr float MaxBankDegrees = 50.f;
 constexpr float MaxRingBonus = 6.f;
 constexpr int RingSides = 6;
-FVector RoutePoint(float d) {
+FVector CanyonPoint(float d) {
  const int N=UE_ARRAY_COUNT(RouteSamples); int lo=0,hi=N-1;
  while(lo+1<hi){int m=(lo+hi)/2; if(RouteSamples[m].D<=d) lo=m; else hi=m;}
  const auto& a=RouteSamples[lo]; const auto& b=RouteSamples[hi];
@@ -39,7 +41,73 @@ float RouteProgress(const FVector& P, float Previous, float MaxAdvance) {
  }
  return FMath::Clamp(best,Previous,FMath::Min(WindRouteControl::RouteLengthMeters,Previous+MaxAdvance));
 }
-FVector RouteRight(float d) { FVector f=(RoutePoint(FMath::Min(d+5.f,WindRouteControl::RouteLengthMeters))-RoutePoint(FMath::Max(d-5.f,0.f))).GetSafeNormal(); return FVector(-f.Y,f.X,0).GetSafeNormal(); }
+}
+float AFlightPawn::GetRouteLength() const
+{
+    return bTraining ? WindRouteTraining::Length : WindRouteControl::RouteLengthMeters;
+}
+int32 AFlightPawn::GetGateCount() const
+{
+    return bTraining ? WindRouteTraining::GateCount : WindRouteControl::GateCount;
+}
+float AFlightPawn::GetGateDistance(int32 Index) const
+{
+    return bTraining ? WindRouteTraining::GateDistances[Index] : WindRouteControl::GateDistance(Index);
+}
+FVector AFlightPawn::RoutePoint(float Distance) const
+{
+    if (!bTraining) return CanyonPoint(Distance);
+    const float Sample = FMath::Clamp(Distance, 0.f, WindRouteTraining::Length);
+    const int32 First = FMath::FloorToInt(Sample);
+    const int32 Second = FMath::Min(First + 1, TrainingPoints.Num() - 1);
+    return FMath::Lerp(TrainingPoints[First], TrainingPoints[Second], Sample - First);
+}
+FVector AFlightPawn::RouteRight(float Distance) const
+{
+    const FVector Forward = RoutePoint(Distance + 5.f) - RoutePoint(Distance - 5.f);
+    return FVector(-Forward.Y, Forward.X, 0).GetSafeNormal();
+}
+void AFlightPawn::BuildTrainingRoute()
+{
+    // Keep the drill over the meadow at a constant altitude of 44 m.
+    FVector Position(60000, -40000, 4400);
+    float Yaw = 45.f;
+    for (int32 Meter = 0; Meter <= WindRouteTraining::Length; ++Meter)
+    {
+        TrainingPoints.Add(Position);
+        const float TurnPerMeter = WindRouteTraining::TurnRate / WindRouteTraining::Speed;
+        const float Turn = Meter >= WindRouteTraining::LeadIn && Meter < WindRouteTraining::LeftEnd ? -TurnPerMeter :
+                           Meter >= WindRouteTraining::RightStart && Meter < WindRouteTraining::RightEnd ? TurnPerMeter : 0.f;
+        Position += FRotator(0, Yaw + Turn * .5f, 0).Vector() * 100.f;
+        Yaw += Turn;
+    }
+}
+int32 AFlightPawn::GetTrainingSegment() const
+{
+    return WindRouteTraining::SegmentAt(DistanceMeters);
+}
+void AFlightPawn::UpdateTrainingResults(float StartDistance, float EndDistance, float DeltaTime, bool bControlsReleased)
+{
+    // Divide a frame at segment boundaries so each sample contributes to the
+    // correct row even if it crosses from one action into the next.
+    const float DistanceDelta = EndDistance - StartDistance;
+    if (DistanceDelta <= 0.f) return;
+    const bool bInside = FMath::Abs(GetRouteOffsetMeters()) <= WindRouteTraining::HalfWidth;
+    for (int32 Index = 0; Index < WindRouteTraining::SegmentCount; ++Index)
+    {
+        const float SegmentStart = Index == 0 ? WindRouteTraining::LeadIn : WindRouteTraining::SegmentEnds[Index - 1];
+        const float SegmentEnd = WindRouteTraining::SegmentEnds[Index];
+        const float Overlap = FMath::Min(EndDistance, SegmentEnd) - FMath::Max(StartDistance, SegmentStart);
+        if (Overlap <= 0.f) continue;
+
+        auto& Result = TrainingResults[Index];
+        const float Seconds = DeltaTime * Overlap / DistanceDelta;
+        Result.Seconds += Seconds;
+        if (bInside) Result.InsideSeconds += Seconds;
+        const bool bMatches = Index == 0 ? Steering < -.25f :
+                              Index == 2 ? Steering > .25f : bControlsReleased;
+        if (bMatches) Result.SteeringMatchSeconds += Seconds;
+    }
 }
 AFlightPawn::AFlightPawn()
 {
@@ -99,6 +167,7 @@ AFlightPawn::AFlightPawn()
 void AFlightPawn::BeginPlay()
 {
     Super::BeginPlay();
+    BuildTrainingRoute();
     for(TActorIterator<AActor> It(GetWorld()); It; ++It) if(It->ActorHasTag(TEXT("OptionalRing"))) It->SetActorHiddenInGame(true);
     CanyonRings->ClearInstances();
     for(int i=0;i<WindRouteControl::GateCount*RingSides;++i)
@@ -111,15 +180,17 @@ void AFlightPawn::BeginPlay()
     bPausedForSignal=true;
     // Optional local inspection point; normal play always starts at the beginning.
     if(FParse::Param(FCommandLine::Get(),TEXT("GrassPreview"))) {
+        bMainMenu=false;
         DistanceMeters=1000.f; GatesAttempted=12; FlightYaw=(RoutePoint(1005.f)-RoutePoint(995.f)).Rotation().Yaw;
         SetActorLocation(RoutePoint(DistanceMeters)); SetActorRotation(FRotator(0.f,FlightYaw,0.f)); RefreshRingVisuals(); ResetTrails();
     }
+    UpdateMenuCursor();
     WindAudio->SetVolumeMultiplier(0.f);
     if (WindAudio->Sound) WindAudio->Play();
 }
 void AFlightPawn::UpdateWind(float Dt)
 {
-    const bool bFlying=!bFinished && !bCalibrationScreen && !bPausedForSignal && !bResumeRequested;
+    const bool bFlying=!bMainMenu && !bFinished && !bCalibrationScreen && !bPausedForSignal && !bResumeRequested;
     const float Target=bFlying && !bSoundMuted ? SoundVolume*(.68f+.12f*FMath::Abs(Steering)+(BoostTime>0 || WindZoneTime>0?.12f:0.f)) : 0.f;
     WindCurrentVolume=FMath::FInterpTo(WindCurrentVolume,Target,Dt,2.0f);
     WindAudio->SetVolumeMultiplier(WindCurrentVolume);
@@ -136,6 +207,10 @@ void AFlightPawn::SetupPlayerInputComponent(UInputComponent* Input)
 {
     Super::SetupPlayerInputComponent(Input);
     Input->BindAxis(TEXT("GliderSteer"),this,&AFlightPawn::Steer);
+    Input->BindKey(EKeys::Up, IE_Pressed, this, &AFlightPawn::MenuUp);
+    Input->BindKey(EKeys::Down, IE_Pressed, this, &AFlightPawn::MenuDown);
+    Input->BindKey(EKeys::Enter, IE_Pressed, this, &AFlightPawn::ActivateMenuSelection);
+    Input->BindKey(EKeys::BackSpace, IE_Pressed, this, &AFlightPawn::ShowMainMenu);
 
 
 
@@ -162,18 +237,23 @@ void AFlightPawn::SetupPlayerInputComponent(UInputComponent* Input)
 void AFlightPawn::ResetRoute()
 {
     SetActorLocation(RoutePoint(0));
-    RouteOffset=0; BoostTime=0; RingSpeedBonus=0; RingBoostGrace=0; WindZoneTime=0; WindZoneFeedbackTime=0; WindZonesVisited.Init(false,UE_ARRAY_COUNT(WindZoneDistances)); bApproachPlayed=false; bLowPower=false; PowerHeightLoss=0.f; CollectedRings.Init(false,WindRouteControl::GateCount);
+    bTrainingRecoveryActive = false;
+    TrainingResults.Init(FTrainingSegmentResult{}, WindRouteTraining::SegmentCount);
+    WindRibbons->SetVisibility(!bTraining);
+    RouteOffset=0; BoostTime=0; RingSpeedBonus=0; RingBoostGrace=0; WindZoneTime=0; WindZoneFeedbackTime=0; WindZonesVisited.Init(false,UE_ARRAY_COUNT(WindZoneDistances)); bApproachPlayed=false; bLowPower=false; PowerHeightLoss=0.f; CollectedRings.Init(false,GetGateCount());
     GatesPassed=0; GatesAttempted=0; GateFeedbackTime=0; ConsecutiveGates=0; SignalPauseCount=0; RefreshRingVisuals();
     BestStreak=0; LeftSteeringTime=0; RightSteeringTime=0;
     DistanceMeters=0; GuideRatio=0; CurrentStreak=0; GuidedTime=0; EligibleTime=0;
-    Steering=0; LateralSpeed=0; Lift=0; Dive=0; HeightOffset=0; Gesture={}; bDiveArmed=false; FlightSpeed=WindRouteControl::FlightSpeedMetersPerSecond; VerticalSpeed=0; bLiftActive=false; bFinished=false; ResetTrails();
+    Steering=0; LateralSpeed=0; Lift=0; Dive=0; HeightOffset=0; Gesture={}; bDiveArmed=false; VerticalSpeed=0; bLiftActive=false; bFinished=false; ResetTrails();
+    FlightSpeed = bTraining ? WindRouteTraining::Speed : WindRouteControl::FlightSpeedMetersPerSecond;
     FlightYaw=(RoutePoint(5)-RoutePoint(0)).Rotation().Yaw;
     SetActorRotation(FRotator(0,FlightYaw,0));
+    SpringArm->SetRelativeRotation(FRotator(-10,0,0));
     Wing->SetRelativeRotation(FRotator::ZeroRotator); Body->SetRelativeRotation(FRotator::ZeroRotator); Tail->SetRelativeRotation(FRotator::ZeroRotator); Fin->SetRelativeRotation(FRotator::ZeroRotator);
 }
 void AFlightPawn::RestartFlight()
 {
-    if (bCalibrationScreen) return;
+    if (bMainMenu || bCalibrationScreen) return;
     ResetRoute();
     if (bUsingEmg) { bPausedForSignal=true; ResumeFlight(); }
 }
@@ -214,19 +294,20 @@ void AFlightPawn::UpdateTrails(float DeltaTime)
 }
 void AFlightPawn::RefreshRingVisuals()
 {
+    const float Radius = bTraining ? WindRouteTraining::RingRadiusCm : 650.f;
     for(int i=0;i<WindRouteControl::GateCount;++i) {
-        const bool visible=i>=GatesAttempted && i<GatesAttempted+3;
-        const float d=WindRouteControl::GateDistance(i);
+        const bool visible=i<GetGateCount() && i>=GatesAttempted && i<GatesAttempted+3;
+        const float d=i<GetGateCount() ? GetGateDistance(i) : 0.f;
         const FVector center=RoutePoint(d);
-        const FVector forward=(RoutePoint(FMath::Min(d+5.f,WindRouteControl::RouteLengthMeters))-RoutePoint(FMath::Max(d-5.f,0.f))).GetSafeNormal();
+        const FVector forward=(RoutePoint(FMath::Min(d+5.f,GetRouteLength()))-RoutePoint(FMath::Max(d-5.f,0.f))).GetSafeNormal();
         const FVector right=RouteRight(d);
         const FVector up=FVector::CrossProduct(forward,right).GetSafeNormal();
         for(int j=0;j<RingSides;++j) {
             FTransform xf(FRotator::ZeroRotator,FVector(0,0,-1000000),FVector(.001f));
             if(visible) {
                 const float a=2.f*PI*j/RingSides+PI/6.f, b=2.f*PI*(j+1)/RingSides+PI/6.f;
-                const FVector p1=center+(right*FMath::Cos(a)+up*FMath::Sin(a))*650.f;
-                const FVector p2=center+(right*FMath::Cos(b)+up*FMath::Sin(b))*650.f;
+                const FVector p1=center+(right*FMath::Cos(a)+up*FMath::Sin(a))*Radius;
+                const FVector p2=center+(right*FMath::Cos(b)+up*FMath::Sin(b))*Radius;
                 const FVector delta=p2-p1;
                 xf=FTransform(delta.Rotation(),(p1+p2)*.5f,FVector(delta.Size()/100.f,.65f,.65f));
             }
@@ -271,9 +352,17 @@ void AFlightPawn::ConnectSelectedDevice()
     if (!Emg->AvailablePorts.IsValidIndex(SelectedPortIndex)) { Emg->RequestPorts(); return; }
     bResumeRequested=false; bUsingEmg=true; bPausedForSignal=true; Emg->ConnectDevice(Emg->AvailablePorts[SelectedPortIndex]);
 }
-void AFlightPawn::OpenCalibration() { ResetRoute(); bResumeRequested=false; bCalibrationScreen=true; bUsingEmg=true; bPausedForSignal=true; }
+void AFlightPawn::OpenCalibration()
+{
+    bCalibrationFromMenu = bMainMenu;
+    bResumeRequested = false;
+    bCalibrationScreen = true;
+    bPausedForSignal = true;
+    Emg->RequestPorts();
+    UpdateMenuCursor();
+}
 void AFlightPawn::StartCalibration() { if (bCalibrationScreen && !Emg->bSimulated && Emg->HasRecentSamples() && Emg->CalibrationPhase.IsEmpty() && !Emg->bCalibrationPending) { bUsingEmg=true; bPausedForSignal=true; Emg->RequestCalibration(); } }
-void AFlightPawn::CloseCalibration() { if (!bCalibrationScreen) return; if (!Emg->CalibrationPhase.IsEmpty() || Emg->bCalibrationPending) Emg->CancelCalibration(); bCalibrationScreen=false; bPausedForSignal=true; }
+void AFlightPawn::CloseCalibration() { if (!bCalibrationScreen) return; if (!Emg->CalibrationPhase.IsEmpty() || Emg->bCalibrationPending) Emg->CancelCalibration(); bCalibrationScreen=false; bPausedForSignal=true; if (bCalibrationFromMenu) ShowMainMenu(); }
 void AFlightPawn::SwitchToSimulator() { bUsingEmg=true; bPausedForSignal=true; Emg->UseSimulator(); }
 void AFlightPawn::IncreaseSensitivity() { Sensitivity=FMath::Min(2.f,Sensitivity+.1f); }
 void AFlightPawn::DecreaseSensitivity() { Sensitivity=FMath::Max(.5f,Sensitivity-.1f); }
@@ -281,6 +370,7 @@ void AFlightPawn::ToggleDetails() { bShowDetails=!bShowDetails; }
 void AFlightPawn::ToggleEmg() { SetUseEmg(!bUsingEmg); }
 void AFlightPawn::SetUseEmg(bool bEnable)
 {
+    if (bMainMenu || bCalibrationScreen) return;
     if (!bEnable) { bUsingEmg=false; bPausedForSignal=false; bResumeRequested=false; return; }
     bUsingEmg=true;
     // A new session starts paused until a valid, fresh, relaxed signal arrives.
@@ -288,9 +378,67 @@ void AFlightPawn::SetUseEmg(bool bEnable)
 }
 void AFlightPawn::ResumeFlight()
 {
+    if (bCalibrationScreen)
+    {
+        if (!Emg->HasFreshSignal() || Emg->bSimulated) return;
+        CloseCalibration();
+        if (bMainMenu) return;
+    }
+    if (bMainMenu) return;
     if (!bUsingEmg) { if (bFinished) ResetRoute(); bPausedForSignal=false; bCalibrationScreen=false; return; }
     // R is an explicit request: wait for a sustained release instead of silently ignoring it.
     bPausedForSignal=true; bResumeRequested=true; ReleaseHoldTime=0;
+}
+void AFlightPawn::UpdateMenuCursor()
+{
+    if (auto* PC = Cast<APlayerController>(GetController()))
+    {
+        const bool bMenuInput = bMainMenu && !bCalibrationScreen;
+        PC->bShowMouseCursor = bMenuInput;
+        PC->bEnableClickEvents = bMenuInput;
+        PC->bEnableMouseOverEvents = bMenuInput;
+        if (bMenuInput)
+        {
+            FInputModeGameAndUI Mode;
+            Mode.SetHideCursorDuringCapture(false);
+            PC->SetInputMode(Mode);
+        }
+        else PC->SetInputMode(FInputModeGameOnly());
+    }
+}
+void AFlightPawn::ShowMainMenu()
+{
+    if (bCalibrationScreen)
+    {
+        if (!Emg->CalibrationPhase.IsEmpty() || Emg->bCalibrationPending) Emg->CancelCalibration();
+        bCalibrationScreen = false;
+    }
+    bMainMenu = true;
+    bTraining = false;
+    bResumeRequested = false;
+    bPausedForSignal = true;
+    ResetRoute();
+    UpdateMenuCursor();
+}
+void AFlightPawn::MenuUp() { if (bMainMenu && !bCalibrationScreen) MenuSelection = (MenuSelection + 2) % 3; }
+void AFlightPawn::MenuDown() { if (bMainMenu && !bCalibrationScreen) MenuSelection = (MenuSelection + 1) % 3; }
+void AFlightPawn::ActivateMenuSelection() { SelectMenu(MenuSelection); }
+void AFlightPawn::SelectMenu(int32 Index)
+{
+    if (!bMainMenu || bCalibrationScreen || Index < 0 || Index > 2) return;
+    MenuSelection = Index;
+    if (Index == 2)
+    {
+        OpenCalibration();
+        return;
+    }
+
+    bTraining = Index == 1;
+    bMainMenu = false;
+    bUsingEmg = Emg->HasFreshSignal() && !Emg->bSimulated;
+    ResetRoute();
+    UpdateMenuCursor();
+    ResumeFlight();
 }
 void AFlightPawn::SimulatorLeftOn() { SimulatorLeft=55; SendSimulator(); }
 void AFlightPawn::SimulatorLeftOff() { SimulatorLeft=0; SendSimulator(); }
@@ -304,6 +452,7 @@ void AFlightPawn::Tick(float Dt)
     Super::Tick(Dt);
     FrameTimeMs=FMath::FInterpTo(FrameTimeMs,Dt*1000.f,Dt,2.f);
     UpdateWind(Dt);
+    if (bMainMenu) return;
     if (bResumeRequested)
     {
         if (!Emg->HasFreshSignal()) { bResumeRequested=false; bPausedForSignal=true; ReleaseHoldTime=0; }
@@ -322,6 +471,9 @@ void AFlightPawn::Tick(float Dt)
     if (bPausedForSignal) { Steering=0; LateralSpeed=0; Lift=0; Dive=0; Gesture={}; bDiveArmed=false; bLiftActive=false; return; }
     const float Target=bUsingEmg ? FMath::Clamp(Emg->GetSteering()*Sensitivity,-1.f,1.f) : KeyboardAxis;
     Steering=FMath::FInterpConstantTo(Steering,Target,Dt,3.f);
+    const bool bControlsReleased = FMath::Abs(Target) < WindRouteTraining::NeutralThreshold &&
+        FMath::Abs(Steering) < WindRouteTraining::NeutralThreshold &&
+        (!bUsingEmg || (Emg->LeftLevel < 10 && Emg->RightLevel < 10));
     LateralSpeed=FMath::FInterpConstantTo(LateralSpeed,Steering*400.f,Dt,600.f);
     GateFeedbackTime=FMath::Max(0.f,GateFeedbackTime-Dt);
     Lift=0.f; Dive=0.f; bLiftActive=false; bDiveArmed=false;
@@ -330,25 +482,40 @@ void AFlightPawn::Tick(float Dt)
     RingBoostGrace=FMath::Max(0.f,RingBoostGrace-Dt);
     if(RingBoostGrace<=0.f) RingSpeedBonus=FMath::Max(0.f,RingSpeedBonus-.8f*Dt);
     WindZoneTime=FMath::Max(0.f,WindZoneTime-Dt); WindZoneFeedbackTime=FMath::Max(0.f,WindZoneFeedbackTime-Dt);
-    UpdateWindRibbons(Dt);
-    const float TargetSpeed=bLowPower ? 16.f : FMath::Min(WindRouteControl::FlightSpeedMetersPerSecond+MaxRingBonus,WindRouteControl::FlightSpeedMetersPerSecond+RingSpeedBonus+(WindZoneTime>0?2.f:0.f));
+    if (!bTraining) UpdateWindRibbons(Dt);
+    const float TargetSpeed=bTraining ? WindRouteTraining::Speed : bLowPower ? 16.f : FMath::Min(WindRouteControl::FlightSpeedMetersPerSecond+MaxRingBonus,WindRouteControl::FlightSpeedMetersPerSecond+RingSpeedBonus+(WindZoneTime>0?2.f:0.f));
     FlightSpeed=FMath::FInterpTo(FlightSpeed,TargetSpeed,Dt,.5f);
     PowerHeightLoss=FMath::FInterpConstantTo(PowerHeightLoss,bLowPower?500.f:0.f,Dt,bLowPower?45.f:100.f);
-    // Horizontal heading is exclusively controlled by the player; no route-driven yaw.
-    FlightYaw=FMath::UnwindDegrees(FlightYaw+Steering*28.f*Dt);
+    FlightYaw=FMath::UnwindDegrees(FlightYaw+Steering*(bTraining ? WindRouteTraining::TurnRate : 28.f)*Dt);
+    const float PreviousDistance = DistanceMeters;
+    bTrainingRecoveryActive = bTraining && bControlsReleased && WindRouteTraining::IsRecovery(GetTrainingSegment());
+    const FVector RecoveryRight = bTrainingRecoveryActive ? RouteRight(PreviousDistance) : FVector::ZeroVector;
+    if (bTrainingRecoveryActive)
+    {
+        const float RecoveryYaw = FVector(RecoveryRight.Y, -RecoveryRight.X, 0).Rotation().Yaw;
+        FlightYaw = FMath::FixedTurn(FlightYaw, RecoveryYaw, WindRouteTraining::RecoveryTurnRate * Dt);
+    }
     const FVector Forward=FRotator(0,FlightYaw,0).Vector();
     FVector P=OldPosition+Forward*(FlightSpeed*100.f*Dt);
-    DistanceMeters=RouteProgress(P,DistanceMeters,FlightSpeed*Dt*1.5f);
+    DistanceMeters = bTraining ? FMath::Min(GetRouteLength(), DistanceMeters + FlightSpeed * Dt)
+                               : RouteProgress(P, DistanceMeters, FlightSpeed * Dt * 1.5f);
+    if (bTrainingRecoveryActive)
+    {
+        const float ErrorCm = FVector::DotProduct(P - RoutePoint(DistanceMeters), RecoveryRight);
+        const float MaxStepCm = WindRouteTraining::RecoveryLateralSpeedCm * Dt;
+        const float CorrectionCm = FMath::Clamp(ErrorCm * (1.f - FMath::Exp(-1.2f * Dt)), -MaxStepCm, MaxStepCm);
+        P -= RecoveryRight * CorrectionCm;
+    }
     P.Z=RoutePoint(DistanceMeters).Z-PowerHeightLoss;
     SetActorLocation(P);
-    const float Pitch=(RoutePoint(FMath::Min(DistanceMeters+12.f,WindRouteControl::RouteLengthMeters))-RoutePoint(FMath::Max(DistanceMeters-3.f,0.f))).Rotation().Pitch;
+    const float Pitch=(RoutePoint(FMath::Min(DistanceMeters+12.f,GetRouteLength()))-RoutePoint(FMath::Max(DistanceMeters-3.f,0.f))).Rotation().Pitch;
     SetActorRotation(FRotator(FMath::FInterpTo(GetActorRotation().Pitch,Pitch,Dt,2.5f),FlightYaw,0));
     RouteOffset=FVector::DotProduct(P-RoutePoint(DistanceMeters),RouteRight(DistanceMeters));
     // Resolve the next ring when the aircraft crosses its plane in the forward direction.
     // A miss starts a gentle descent; a later successful ring restores power smoothly.
-    if(GatesAttempted<WindRouteControl::GateCount) {
+    while(GatesAttempted<GetGateCount()) {
         const int i=GatesAttempted;
-        const float d=WindRouteControl::GateDistance(i);
+        const float d=i<GetGateCount() ? GetGateDistance(i) : 0.f;
         const FVector center=RoutePoint(d);
         const FVector normal=(RoutePoint(d+5.f)-RoutePoint(d-5.f)).GetSafeNormal();
         if(!bApproachPlayed && FVector::Dist(P,center)<3000.f && FVector::DotProduct(P-center,normal)<0.f) {
@@ -357,21 +524,26 @@ void AFlightPawn::Tick(float Dt)
             if(WindSweepSound && !bSoundMuted) UGameplayStatics::PlaySound2D(this,WindSweepSound,SoundVolume*.38f,1.15f);
         }
         const float a=FVector::DotProduct(OldPosition-center,normal), b=FVector::DotProduct(P-center,normal);
-        if(a<0.f && b>=0.f && b-a>0.001f) {
-            const FVector hit=FMath::Lerp(OldPosition,P,FMath::Clamp(-a/(b-a),0.f,1.f));
-            if((hit-center).Size()<=650.f) {
+        const bool bCrossed = a<0.f && b>=0.f && b-a>0.001f;
+        const bool bExpired = bTraining && DistanceMeters >= d + WindRouteTraining::RingGraceMeters;
+        if(bCrossed || bExpired) {
+            const FVector hit=bCrossed ? FMath::Lerp(OldPosition,P,FMath::Clamp(-a/(b-a),0.f,1.f)) : P;
+            const float Radius = bTraining ? WindRouteTraining::RingRadiusCm : 650.f;
+            if(bCrossed && (hit-center).Size()<=Radius) {
                 const bool bWasLowPower=bLowPower;
                 CollectedRings[i]=true; ++GatesPassed; ++ConsecutiveGates; GateFeedbackTime=1.8f; BoostTime=2.f; RingSpeedBonus=FMath::Min(MaxRingBonus,RingSpeedBonus+1.5f); RingBoostGrace=5.f; bLowPower=false;
                 if(RingSound && !bSoundMuted) UGameplayStatics::PlaySound2D(this,RingSound,SoundVolume*1.2f,1.f+.04f*FMath::Min(ConsecutiveGates-1,4));
                 if(WindSweepSound && !bSoundMuted) UGameplayStatics::PlaySound2D(this,WindSweepSound,SoundVolume*.85f,1.3f);
                 if(bWasLowPower && RestoreSound && !bSoundMuted) UGameplayStatics::PlaySound2D(this,RestoreSound,SoundVolume*.45f);
-            } else { bLowPower=true; BoostTime=0.f; RingSpeedBonus=0.f; RingBoostGrace=0.f; GateFeedbackTime=0.f; ConsecutiveGates=0;
+            } else { bLowPower=!bTraining; BoostTime=0.f; RingSpeedBonus=0.f; RingBoostGrace=0.f; GateFeedbackTime=0.f; ConsecutiveGates=0;
                 if(MissSound && !bSoundMuted) UGameplayStatics::PlaySound2D(this,MissSound,SoundVolume*.55f);
             }
             bApproachPlayed=false; ++GatesAttempted; RefreshRingVisuals();
+            if (bTraining && bExpired && !bCrossed) continue;
         }
+        break;
     }
-    for(int i=0;i<UE_ARRAY_COUNT(WindZoneDistances);++i) {
+    for(int i=0;!bTraining && i<UE_ARRAY_COUNT(WindZoneDistances);++i) {
         if(WindZonesVisited[i]) continue;
         const float d=WindZoneDistances[i]; const float side=i%2==0?-900.f:900.f;
         const FVector center=RoutePoint(d)+RouteRight(d)*side;
@@ -380,14 +552,15 @@ void AFlightPawn::Tick(float Dt)
             if(WindSweepSound && !bSoundMuted) UGameplayStatics::PlaySound2D(this,WindSweepSound,SoundVolume*.85f,1.05f);
         }
     }
-    if (DistanceMeters>=WindRouteControl::RouteLengthMeters) { bFinished=true; LateralSpeed=0; }
+    if (bTraining) UpdateTrainingResults(PreviousDistance, DistanceMeters, Dt, bControlsReleased);
+    if (DistanceMeters>=GetRouteLength()) { bFinished=true; LateralSpeed=0; }
     // In Unreal, positive roll lowers the right wing (+Y), matching rightward steering.
     for (auto* Mesh : {Wing.Get(),Body.Get(),Tail.Get(),Fin.Get()}) Mesh->SetRelativeRotation(FRotator(Lift*12.f-Dive*12.f,0,Steering*MaxBankDegrees));
     SpringArm->SetRelativeRotation(FMath::RInterpTo(SpringArm->GetRelativeRotation(),FRotator(-10.f,0.f,Steering*18.f),Dt,3.f));
     UpdateTrails(Dt);
     Camera->SetFieldOfView(FMath::FInterpTo(Camera->FieldOfView,58.f+(GateFeedbackTime>0?1.5f:0.f),Dt,3.f));
     if (Steering<-.08f) LeftSteeringTime+=Dt; else if (Steering>.08f) RightSteeringTime+=Dt;
-    if (DistanceMeters>=18 && DistanceMeters<=WindRouteControl::RouteLengthMeters-5.f)
+    if (DistanceMeters>=18 && DistanceMeters<=GetRouteLength()-5.f)
     {
         EligibleTime+=Dt;
         if (FMath::Abs(RouteOffset)<=300.f) { GuidedTime+=Dt; CurrentStreak+=Dt; }

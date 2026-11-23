@@ -2,12 +2,20 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
 #include "ControlMath.h"
+#include "TrainingRoute.h"
 #include "FlightPawn.generated.h"
 
 class UCameraComponent;
 class USpringArmComponent;
 class UStaticMeshComponent;
 class USemgBridgeComponent;
+
+struct FTrainingSegmentResult
+{
+    float Seconds = 0.f;
+    float InsideSeconds = 0.f;
+    float SteeringMatchSeconds = 0.f;
+};
 
 UCLASS()
 class WINDROUTE_API AFlightPawn : public APawn
@@ -55,7 +63,30 @@ public:
     UFUNCTION(BlueprintCallable, Category="Flight") void SetUseEmg(bool bEnable);
     UFUNCTION(BlueprintCallable, Category="Flight") void ResumeFlight();
     UFUNCTION(BlueprintPure, Category="Flight") static float GuidePosition(float Distance);
+    bool bMainMenu = true;
+    bool bTraining = false;
+    bool bTrainingRecoveryActive = false;
+    int32 MenuSelection = 0;
+    FVector RoutePoint(float Distance) const;
+    FVector RouteRight(float Distance) const;
+    float GetRouteLength() const;
+    int32 GetGateCount() const;
+    int32 GetTrainingSegment() const;
+    float GetRouteOffsetMeters() const { return RouteOffset / 100.f; }
+    const TArray<FTrainingSegmentResult>& GetTrainingResults() const { return TrainingResults; }
+    void SelectMenu(int32 Index);
+    void ShowMainMenu();
 private:
+    bool bCalibrationFromMenu = false;
+    TArray<FVector> TrainingPoints;
+    TArray<FTrainingSegmentResult> TrainingResults;
+    float GetGateDistance(int32 Index) const;
+    void BuildTrainingRoute();
+    void UpdateTrainingResults(float StartDistance, float EndDistance, float DeltaTime, bool bControlsReleased);
+    void UpdateMenuCursor();
+    void MenuUp();
+    void MenuDown();
+    void ActivateMenuSelection();
     UPROPERTY() TObjectPtr<USceneComponent> Pivot;
     UPROPERTY() TObjectPtr<UStaticMeshComponent> Body;
     UPROPERTY() TObjectPtr<UStaticMeshComponent> Wing;
